@@ -1,0 +1,114 @@
+Movement Analysis
+========================
+
+This doc analyzes the personal movement data taken at random from a personal activity monitoring device.
+
+##Loading and preprocessing the data
+
+Here we will setup libraries and load in the data
+
+```{r}
+library(ggplot2)
+library(plyr)
+
+fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+actmonData <- tempfile()
+download.file(url=fileUrl, destfile = actmonData, method = 'curl')
+amData <- read.csv(unz(actmonData, "activity.csv"), stringsAsFactors = FALSE)
+unlink(actmonData)
+
+head(amData)
+```
+
+Bit of data processing to create day and dateTime fields for easier analysis down the road.
+
+```{r}
+amData$day <- weekdays(as.Date(amData$date))
+amData$dateTime <- as.POSIXct(amData$date, format="%Y-%m-%d")
+```
+
+##What is mean total number of steps taken per day?
+
+Quick look at the number of steps per day by this individual.
+
+```{r}
+stepsSub <- aggregate(amData$steps ~ amData$dateTime, FUN = sum)
+colnames(stepsSub) <- c("Date", "Steps")
+hist(stepsSub$Steps, main = "Total Steps by Day", xlab = "Steps")
+```
+
+The mean and median number of steps taken:
+
+```{r}
+mean(stepsSub$Steps)
+median(stepsSub$Steps)
+```
+
+##What is the average daily activity pattern?
+
+A plot of the average number of steps taken over time:
+
+```{r}
+##average number of steps per 5-minute interval
+stepAverages <- aggregate(amData$steps, by=list(amData$interval), FUN=mean, na.rm=TRUE)
+colnames(stepAverages) <- c("interval", "steps")
+
+ggplot(data = stepAverages, aes(interval, steps)) + geom_line() + xlab("5-Minute Intervals") + ylab("Average Steps")
+```
+
+The 5-minute interval that, on average, contains the maximum number of steps
+
+```{r}
+max(stepAverages$steps, na.rm = TRUE)
+```
+
+##Imputing missing values
+
+Number of NAs in the data
+```{r}
+sum(rowSums(is.na(amData)))
+```
+
+There are 2,304 missing values. We'll fill in the NAs with the 5 minute interval averages from the previous table.
+```{r}
+imputed <- amData
+
+for (i in 1:nrow(imputed)){
+  if (is.na(imputed$steps[i])){
+    imputed$steps[i] <- stepAverages$steps[which(imputed$interval[i] == stepAverages$interval)]}
+}
+
+imputed <- arrange(imputed, interval)
+
+##Check for NA values in the new set
+sum(rowSums(is.na(imputed)))
+```
+
+Reproducing the steps per day model, but now with the missing data filled in.
+
+```{r}
+stepsSub2 <- aggregate(imputed$steps ~ imputed$dateTime, FUN = sum)
+colnames(stepsSub2) <- c("Date", "Steps")
+hist(stepsSub2$Steps, main = "Total Steps by Day", xlab = "Steps")
+```
+
+##Are there differences in activity patterns between weekdays and weekends?
+
+Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date is a weekday or weekend day.
+```{r}
+imputed$dayType <- ifelse(imputed$day %in% c("Saturday", "Sunday"), "Weekend", "Weekday")
+head(imputed)
+```
+
+Average number of steps taken per 5-minute interval across weekdays and weekends
+```{r}
+##average steps by interval and day type (weekend or weekday)
+stepAverages2 <- aggregate(imputed$steps, by=list(imputed$interval, imputed$dayType), FUN=mean, na.rm=TRUE)
+colnames(stepAverages2) <- c("interval", "dayType", "steps")
+
+##plotting averages by day type
+ggplot(data = stepAverages2, aes(interval, steps)) + geom_line() + facet_grid(dayType ~ .) + xlab("5-Minute Intervals") + ylab("Average Steps")
+```
+
+
+
